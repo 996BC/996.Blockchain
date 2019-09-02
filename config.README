@@ -1,0 +1,68 @@
+This is a document about config.json.
+the config.json is used with anti996 like "./anti996 -c ./config.json"
+
+{
+    # 1 for full node, 2 for light node;
+    # currently, it only supports 1
+    "node_type":1,
+
+    # the address your node listen on (both TCP and UDP)
+    "ip":"0.0.0.0",
+    "port":10080,
+
+    # the seeds are the initialized nodes for p2p network
+    "seeds":["49.234.235.2:10080"],
+
+    # the max_peers is the number your node will connect to(tcp);
+    "max_peers":128,
+
+    # 0 : Error
+    # 1 : Warn
+    # 2 : Info
+    # 3 : Debug
+    "log_level":3,
+
+    # the data_path is used to place blocks data
+    "data_path":"./data",
+
+    # key is the private key for the node;
+    # you can use plain key or sealed key
+    "key": {
+
+        # plain key : 1
+        # sealed key : 2
+        "type":1,
+
+        # if use plain key, key file is $path/.pKey otherwise is $path/.skey
+        "path":"./"
+    },
+
+    # 1 is the main network chain ID
+    "chain_id":1,
+
+    # the *_diff_limit sets the lower bound of mining difficulty;
+    # 
+    # the string value is the hex representation of an uint32;
+    # the first byte is the original difficulty's bit length;
+    # the rest 3 bytes are the prefix of difficulty;
+    # eg. E8100000 means 0x100000 << (0xE8 - 24), 24 is the 0x100000 bit length
+    #
+    # if your node connects to the main network, you should not change them
+    "block_diff_limit":"E8100000",
+    "evidence_diff_limit":"EE100000",
+
+    # expected block interval(seconds)
+    # if your node connects to the main network, you should not change it
+    "block_interval":90,
+
+    # mining threads number(>=0 and <= core numbers)
+    # if it's 0, the program won't mine
+    "parallel_mine":1,
+
+    # genesis block of chain, you should not change it
+    "genesis":"01000000005d56a8a20b2e8e5ae81000002000000000000000000000000000000000000000000000000000000000000000002103ec9abd43ca6fb616a58aa81d08ae52935a62ff61204c9a2cb27aa1ec95fb3b2920527adb4c279b5fd0293f12d5d29e31f3ab34f73767b9e7b15f80255b3747aed000020120d424d7950f219a9f055cab4691e7b3fb68a557d39a0a8f774fe38ed70f94f4d42103ec9abd43ca6fb616a58aa81d08ae52935a62ff61204c9a2cb27aa1ec95fb3b2900463044022009ae72f86e2caff246cf4ff2ad1f98d1cd67f1d8a2d72d43fa882dc89b61de0902201a1cd46b8d4ca8c0a2d413f63cdd5c6f4259fc9623363f0f7a3e8afccfb1a4a40021595901208a86dd096de111dc910bd24dabb88ed3a59d460c99a99e7db88d2ff231d3a6b32103ec9abd43ca6fb616a58aa81d08ae52935a62ff61204c9a2cb27aa1ec95fb3b2900473045022100c8d7e7586363afe609795c1c8df7fb075a6b32263e8f33565baa40cd8d0873560220140348366631cf0a814654ae58feb8edc3b70bf3150a49abdc01d9a4aa4f14a1000598b8",
+
+    # the program will listen on 128.0.0.1:$http_port to provide http service
+    # you can use cmd/client to communicate with it
+    "http_port": 23666
+}

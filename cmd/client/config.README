@@ -1,0 +1,40 @@
+This is a document about config.json.
+the config.json is used with client like "./client -c ./config.json"
+
+{
+    # the anti996 node address, default is the localhost;
+    # if you deploy reverse proxy for it, you may set the public network IP
+    "server_ip":"127.0.0.1",
+    "server_port":23666,
+
+    # if the address is localhost, use "http";
+    # if your reserse proxy supports https, use "https"
+    "scheme":"http",
+
+    # whether ignore the hidden file or direcotry
+    # 1 is true otherwise false
+    "ignore_hidden":1,
+
+    # key is the private key owned by yourself to sign the hash
+    # you can use plain key or sealed key
+    "key": {
+
+        # plain key : 1
+        # sealed key : 2
+        "type":1,
+
+        # if use plain key, key file is $path/.pKey otherwise is $path/.skey
+        "path":"./"
+    },
+
+    # the pow target for evidence
+    # the string value is the hex representation of an uint32;
+    # the first byte is the original difficulty's bit length;
+    # the rest 3 bytes are the prefix of difficulty;
+    # eg. E8100000 means 0x100000 << (0xE8 - 24), 24 is the 0x100000 bit length
+    #
+    # the more difficult your pow is, 
+    # the more easier your evidence get adapted by the chain network;
+    # EE100000 it the lowest difficulty limit, you can make it more difficult like ED100000
+    "hash_diff":"EE100000"
+}

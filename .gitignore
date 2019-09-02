@@ -1,0 +1,6 @@
+.vscode
+bin/
+*/.pKey
+*/.sKey
+__debug_bin
+

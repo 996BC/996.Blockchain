@@ -1,0 +1,13 @@
+{
+    "_comment":"THIS IS A CONFIG TEMPLATE.FOR MORE DETAILS,PLEASE READ config.README.",
+
+    "server_ip":"127.0.0.1",
+    "server_port":23666,
+    "scheme":"http",
+    "ignore_hidden":1,
+    "key": {
+        "type":1,
+        "path":"./"
+    },
+    "hash_diff":"EE100000"
+}
