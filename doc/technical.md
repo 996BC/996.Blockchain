@@ -79,6 +79,7 @@ Neighbours | 4 | GetNeighbours应答，或主动推送邻居节点
 具体格式参考[源码注释](/serialize/handshake/handshake.go) /serialize/handshake/handshake.go
 
 **Request类型**
+
 字段　| 字段含义　
 --- | ---
 Version | 握手协议版本
@@ -90,6 +91,7 @@ SessionKey | 请求方会话公钥
 Sig | 签名
 
 **Response类型**
+
 字段　| 字段含义　
 --- | ---
 Version | 握手协议版本
