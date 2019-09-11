@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/996BC/996.Blockchain/core/blockchain"
 	"github.com/996BC/996.Blockchain/p2p"
 	"github.com/996BC/996.Blockchain/params"
 	"github.com/996BC/996.Blockchain/serialize/cp"
 	"github.com/996BC/996.Blockchain/utils"
+	"github.com/btcsuite/btcd/btcec"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 )
 
 type Config struct {
-	Node         *p2p.Node
+	Node         p2p.Node
 	NodeType     params.NodeType
 	PrivKey      *btcec.PrivateKey
 	ParallelMine int

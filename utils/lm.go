@@ -2,20 +2,24 @@ package utils
 
 import "sync"
 
-// LoopMode is an universal working mode.
-// If the struct has a LoopMode, it means its working logic seperates in one or many long-term running goroutines.
-// The struct should call StartWorking() in its setup function and Stop() in its cleanup function.
-// Each long-term running goroutine should work like:
 /*
+LoopMode is a working mode that indicates the owner seperates its working logic in one or many long-term running goroutines.
+The owner should call StartWorking() in its setup function and Stop() in its cleanup function,
+and each of its long-term running goroutine should work like:
+```go
+func loop() {
 	lm.Add()
 	defer lm.Done()
 	for {
 		select {
 		case <-lm.D:
 			return
-		// case :...other goroutine logic
+		// case ...:
+		// do the jobs
 		}
 	}
+}
+```
 */
 type LoopMode struct {
 	working     bool

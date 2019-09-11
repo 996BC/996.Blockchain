@@ -48,7 +48,7 @@ type net struct {
 	lm              *utils.LoopMode
 }
 
-func newNet(node *p2p.Node, chain *blockchain.Chain, pool *evidencePool, nodeType params.NodeType) *net {
+func newNet(node p2p.Node, chain *blockchain.Chain, pool *evidencePool, nodeType params.NodeType) *net {
 	result := &net{
 		InitFinishC:     make(chan bool, 1),
 		inited:          false,

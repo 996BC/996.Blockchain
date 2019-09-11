@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/996BC/996.Blockchain/crypto"
+	"github.com/btcsuite/btcd/btcec"
 )
 
 // Peer is a node that can connect to

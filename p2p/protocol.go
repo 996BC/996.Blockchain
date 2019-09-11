@@ -1,6 +1,9 @@
 package p2p
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Protocol is the interface that the p2p network protocols must implement
 type Protocol interface {
@@ -11,55 +14,53 @@ type Protocol interface {
 // ProtocolRunner defines the interface for accessing the p2p network
 type ProtocolRunner interface {
 	// Send sends data to network
-	// returns nil on success, or PeerNotFoundError, NoPeersError on fail
+	// returns nil on success, or ErrPeerNotFound, ErrNoPeers on fail
 	Send(dp *PeerData) error
 
 	// GetRecvChan returns a channel for getting network data
 	GetRecvChan() <-chan *PeerData
 }
 
-// PeerData combines network data and peer info
+// PeerData is the data struct used in sending or receiving from netwoks
 type PeerData struct {
-	// the Peer is the send target or the receive source node ID;
-	// if Peer is empty string, means broadcast to every nodes (used in sending data)
+	// the Peer is the send target or the receive source node ID
+	// if it is an empty string, means broadcast to every nodes
 	Peer string
+
 	Data []byte
 }
 
-// PeerNotFoundError means Peer not found
-type PeerNotFoundError struct {
+// ErrPeerNotFound means Peer not found
+type ErrPeerNotFound struct {
 	Peer string
 }
 
-func (p PeerNotFoundError) Error() string {
+func (p ErrPeerNotFound) Error() string {
 	return fmt.Sprintf("Peer:%s not found", p.Peer)
 }
 
-// NoPeersError means don't find any peers on the network
-type NoPeersError struct{}
-
-func (p NoPeersError) Error() string {
-	return "Not found any peers on the network yet"
-}
+// ErrNoPeers means don't find any peers on the network
+var ErrNoPeers = errors.New("Not found any peers on the network yet")
 
 //////////////////////////////////////////////////////////////////////////////////////
 type protocolRunner struct {
-	Data     chan *PeerData
 	protocol Protocol
-	n        *Node
+	Data     chan *PeerData
+	sendFunc func(p Protocol, dp *PeerData) error
+	n        *node
 }
 
-func newProtocolRunner(protocol Protocol, node *Node) *protocolRunner {
+func newProtocolRunner(protocol Protocol, sendFunc func(p Protocol, dp *PeerData) error) *protocolRunner {
 	runner := &protocolRunner{
 		protocol: protocol,
-		n:        node,
 		Data:     make(chan *PeerData, 2048),
+		sendFunc: sendFunc,
 	}
 	return runner
 }
 
 func (p *protocolRunner) Send(dp *PeerData) error {
-	return p.n.send(p.protocol, dp)
+	return p.sendFunc(p.protocol, dp)
 }
 
 func (p *protocolRunner) GetRecvChan() <-chan *PeerData {

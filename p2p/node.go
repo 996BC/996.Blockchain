@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/996BC/996.Blockchain/crypto"
 	"github.com/996BC/996.Blockchain/p2p/peer"
 	"github.com/996BC/996.Blockchain/params"
 	"github.com/996BC/996.Blockchain/utils"
+	"github.com/btcsuite/btcd/btcec"
 )
 
 var logger = utils.NewLogger("p2p")
@@ -26,47 +26,28 @@ type Config struct {
 	ChainID    uint8
 }
 
-// Node is a node that can communicate with others in the p2p network
-type Node struct {
-	tcpServer utils.TCPServer
-	privKey   *btcec.PrivateKey
-	chainID   uint8
-	nodeType  params.NodeType
-
-	maxPeersNum  int
-	peerProvider peer.Provider
-
-	connsMutex sync.Mutex
-	conns      map[string]*conn //<peer ID, conn>
-
-	protocolsMutex sync.Mutex
-	protocols      map[uint8]*protocolRunner //<Protocol ID, ProtocolRunner>
-
-	ng          *negotiator
-	ngMutex     sync.Mutex
-	ngBlackList map[string]time.Time
-
-	connectTask chan *peer.Peer
-	delConnTask chan string
-	lm          *utils.LoopMode
+// Node is a node that can communicate with others in the p2p network.
+type Node interface {
+	AddProtocol(p Protocol) ProtocolRunner
+	Start()
+	Stop()
 }
 
 // NewNode returns a p2p network Node
-func NewNode(c *Config) *Node {
+func NewNode(c *Config) Node {
 	if c.Type != params.FullNode && c.Type != params.LightNode {
 		logger.Fatal("invalid node type %d\n", c.Type)
 	}
-	n := &Node{
+	n := &node{
 		privKey:      c.PrivKey,
 		chainID:      c.ChainID,
 		nodeType:     c.Type,
 		maxPeersNum:  c.MaxPeerNum,
 		peerProvider: c.Provider,
-		conns:        make(map[string]*conn),
 		protocols:    make(map[uint8]*protocolRunner),
 		ngBlackList:  make(map[string]time.Time),
 		connectTask:  make(chan *peer.Peer, c.MaxPeerNum),
-		delConnTask:  make(chan string, c.MaxPeerNum),
+		connMgr:      newConnMgr(c.MaxPeerNum),
 		lm:           utils.NewLoop(1),
 	}
 	n.ng = newNegotiator(n.privKey, n.chainID, n.nodeType)
@@ -80,12 +61,30 @@ func NewNode(c *Config) *Node {
 	return n
 }
 
-func (n *Node) String() string {
-	return fmt.Sprintf("[Node] listen on %v", n.tcpServer.Addr())
+type node struct {
+	tcpServer utils.TCPServer
+	privKey   *btcec.PrivateKey
+	chainID   uint8
+	nodeType  params.NodeType
+
+	maxPeersNum  int
+	peerProvider peer.Provider
+
+	protocolsMutex sync.Mutex
+	protocols      map[uint8]*protocolRunner //<Protocol ID, ProtocolRunner>
+
+	ng          *negotiator
+	ngMutex     sync.Mutex
+	ngBlackList map[string]time.Time
+
+	connectTask chan *peer.Peer
+	connMgr     connMgr
+
+	lm *utils.LoopMode
 }
 
 // AddProtocol adds the runtime p2p network protocols
-func (n *Node) AddProtocol(p Protocol) ProtocolRunner {
+func (n *node) AddProtocol(p Protocol) ProtocolRunner {
 	n.protocolsMutex.Lock()
 	defer n.protocolsMutex.Unlock()
 
@@ -93,36 +92,37 @@ func (n *Node) AddProtocol(p Protocol) ProtocolRunner {
 		logger.Fatal("protocol conflicts in ID:%s, exists:%s, wanted to add:%s",
 			p.ID(), v.protocol.Name(), v.protocol.Name())
 	}
-	runner := newProtocolRunner(p, n)
+	runner := newProtocolRunner(p, n.send)
 	n.protocols[p.ID()] = runner
 	return runner
 }
 
-func (n *Node) Start() {
+func (n *node) Start() {
 	if !n.tcpServer.Start() {
 		logger.Fatalln("start node's tcp server failed")
 	}
+	n.connMgr.start()
 
 	go n.loop()
 	n.lm.StartWorking()
 }
 
-func (n *Node) Stop() {
+func (n *node) Stop() {
 	if n.lm.Stop() {
 		n.tcpServer.Stop()
-		n.connsMutex.Lock()
-		for _, conn := range n.conns {
-			conn.stop()
-		}
-		n.connsMutex.Unlock()
+		n.connMgr.stop()
 	}
 }
 
-func (n *Node) loop() {
+func (n *node) String() string {
+	return fmt.Sprintf("[node] listen on %v", n.tcpServer.Addr())
+}
+
+func (n *node) loop() {
 	n.lm.Add()
 	defer n.lm.Done()
 
-	checkPeersTicker := time.NewTicker(10 * time.Second)
+	getPeersToConnectTicker := time.NewTicker(10 * time.Second)
 	statusReportTicker := time.NewTicker(15 * time.Second)
 	ngBlackListCleanTicker := time.NewTicker(1 * time.Minute)
 
@@ -131,12 +131,8 @@ func (n *Node) loop() {
 		select {
 		case <-n.lm.D:
 			return
-		case delConnID := <-n.delConnTask:
-			n.connsMutex.Lock()
-			delete(n.conns, delConnID)
-			n.connsMutex.Unlock()
-		case <-checkPeersTicker.C:
-			n.checkPeers()
+		case <-getPeersToConnectTicker.C:
+			n.getPeersToConnect()
 		case <-statusReportTicker.C:
 			n.statusReport()
 		case <-ngBlackListCleanTicker.C:
@@ -158,8 +154,8 @@ func (n *Node) loop() {
 	}
 }
 
-func (n *Node) checkPeers() {
-	peersNum := len(n.conns)
+func (n *node) getPeersToConnect() {
+	peersNum := n.connMgr.size()
 	if peersNum > n.maxPeersNum {
 		return
 	}
@@ -171,37 +167,27 @@ func (n *Node) checkPeers() {
 		logger.Warn("get peers from provider failed:%v\n", err)
 		return
 	}
+
 	for _, newPeer := range newPeers {
 		n.connectTask <- newPeer
 	}
-
 }
 
-func (n *Node) statusReport() {
+func (n *node) statusReport() {
 	if utils.GetLogLevel() < utils.LogDebugLevel {
 		return
 	}
 
-	var peersInfo string
-	n.connsMutex.Lock()
-	for k, v := range n.conns {
-		peersInfo += "[" + k[:6] + " " + v.p.Address() + "] "
-	}
-	n.connsMutex.Unlock()
-
-	logger.Debug("current address book:%s\n", peersInfo)
+	logger.Debug("current address book:%v\n", n.connMgr)
 }
 
-func (n *Node) setupConn(newPeer *peer.Peer) {
+func (n *node) setupConn(newPeer *peer.Peer) {
 	// alwayse suppose the remote site will build the connection in the same time;
 	// compares the ID, the smaller one will be the client
 	if crypto.PrivKeyToID(n.privKey) > newPeer.ID {
-		time.Sleep(15 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
-	n.connsMutex.Lock()
-	_, ok := n.conns[newPeer.ID]
-	n.connsMutex.Unlock()
-	if ok {
+	if n.connMgr.isExist(newPeer.ID) {
 		return
 	}
 
@@ -223,14 +209,11 @@ func (n *Node) setupConn(newPeer *peer.Peer) {
 	n.addConn(newPeer, conn, ec)
 }
 
-func (n *Node) recvHandshake(conn utils.TCPConn) {
+func (n *node) recvHandshake(conn utils.TCPConn) {
 	accept := false
-
-	n.connsMutex.Lock()
-	if len(n.conns) < n.maxPeersNum {
+	if n.connMgr.size() < n.maxPeersNum {
 		accept = true
 	}
-	n.connsMutex.Unlock()
 
 	peer, ec, err := n.ng.recvHandshake(conn, accept)
 	if err != nil {
@@ -244,74 +227,21 @@ func (n *Node) recvHandshake(conn utils.TCPConn) {
 		return
 	}
 
-	n.connsMutex.Lock()
-	// reject the duplicate connection with the same peer
-	if _, ok := n.conns[peer.ID]; ok {
-		accept = false
-	}
-	n.connsMutex.Unlock()
-
-	if !accept {
-		conn.Disconnect()
-		return
-	}
-
 	n.addConn(peer, conn, ec)
 }
 
-func (n *Node) send(p Protocol, dp *PeerData) error {
-
-	if len(n.conns) == 0 {
-		return NoPeersError{}
+func (n *node) addConn(peer *peer.Peer, conn utils.TCPConn, ec codec) {
+	if err := n.connMgr.add(peer, conn, ec, n.recv); err != nil {
+		logger.Debug("addConn failed:%v\n", err)
+		conn.Disconnect()
 	}
-
-	// broadcast
-	if len(dp.Peer) == 0 {
-		n.connsMutex.Lock()
-		for _, conn := range n.conns {
-			conn.send(p.ID(), dp.Data)
-		}
-		n.connsMutex.Unlock()
-		return nil
-	}
-
-	n.connsMutex.Lock()
-	conn, ok := n.conns[dp.Peer]
-	n.connsMutex.Unlock()
-	if !ok {
-		return PeerNotFoundError{Peer: dp.Peer}
-	}
-
-	conn.send(p.ID(), dp.Data)
-	return nil
 }
 
-func (n *Node) addConn(peer *peer.Peer, conn utils.TCPConn, ec codec) {
-	n.connsMutex.Lock()
-	defer n.connsMutex.Unlock()
-
-	if _, ok := n.conns[peer.ID]; !ok {
-		c := newConn(peer, conn, ec, n.remoteRecv)
-		n.conns[c.p.ID] = c
-		conn.SetDisconnectCb(func(addr net.Addr) {
-			logger.Debug("disconnect peer %v, address %v\n", peer.ID, addr)
-			n.removeConn(peer.ID)
-		})
-		c.start()
-
-		logger.Debug("add conn of %v\n", peer)
-		return
-	}
-
-	logger.Debug("already exist a connection with %s\n", peer.ID)
-	conn.Disconnect()
+func (n *node) send(p Protocol, dp *PeerData) error {
+	return n.connMgr.send(p, dp)
 }
 
-func (n *Node) removeConn(ID string) {
-	n.delConnTask <- ID
-}
-
-func (n *Node) remoteRecv(peer string, protocolID uint8, data []byte) {
+func (n *node) recv(peer string, protocolID uint8, data []byte) {
 	// logger.Debug("recv a protocol[%d] packet, size %d\n", protocolID, len(data))
 	if runner, ok := n.protocols[protocolID]; ok {
 		select {
@@ -326,13 +256,13 @@ func (n *Node) remoteRecv(peer string, protocolID uint8, data []byte) {
 	}
 }
 
-func (n *Node) addNgBlackList(peerID string) {
+func (n *node) addNgBlackList(peerID string) {
 	n.ngMutex.Lock()
 	defer n.ngMutex.Unlock()
 	n.ngBlackList[peerID] = time.Now()
 }
 
-func (n *Node) cleanNgBlackList() {
+func (n *node) cleanNgBlackList() {
 	n.ngMutex.Lock()
 	defer n.ngMutex.Unlock()
 
@@ -344,7 +274,7 @@ func (n *Node) cleanNgBlackList() {
 	}
 }
 
-func (n *Node) getExcludePeers() map[string]bool {
+func (n *node) getExcludePeers() map[string]bool {
 	result := make(map[string]bool)
 
 	n.ngMutex.Lock()
@@ -353,11 +283,10 @@ func (n *Node) getExcludePeers() map[string]bool {
 	}
 	n.ngMutex.Unlock()
 
-	n.connsMutex.Lock()
-	for id := range n.conns {
+	connectedID := n.connMgr.getIDs()
+	for _, id := range connectedID {
 		result[id] = true
 	}
-	n.connsMutex.Unlock()
 
 	return result
 }
