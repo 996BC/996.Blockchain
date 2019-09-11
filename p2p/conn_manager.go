@@ -9,8 +9,8 @@ import (
 	"github.com/996BC/996.Blockchain/utils"
 )
 
-// connMgr manages all the conn
-type connMgr interface {
+// connManager manages all the conn
+type connManager interface {
 	start()
 	stop()
 	size() int
@@ -21,27 +21,27 @@ type connMgr interface {
 	String() string
 }
 
-func newConnMgr(maxPeerNum int) connMgr {
-	return &connMgrImp{
+func newConnManager(maxPeerNum int) connManager {
+	return &connManagerImp{
 		conns:    make(map[string]*conn),
 		removing: make(chan string, maxPeerNum),
 		lm:       utils.NewLoop(1),
 	}
 }
 
-type connMgrImp struct {
+type connManagerImp struct {
 	mutex    sync.Mutex
 	conns    map[string]*conn //<peer ID, conn>
 	removing chan string
 	lm       *utils.LoopMode
 }
 
-func (c *connMgrImp) start() {
+func (c *connManagerImp) start() {
 	go c.loop()
 	c.lm.StartWorking()
 }
 
-func (c *connMgrImp) stop() {
+func (c *connManagerImp) stop() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -52,14 +52,14 @@ func (c *connMgrImp) stop() {
 	}
 }
 
-func (c *connMgrImp) size() int {
+func (c *connManagerImp) size() int {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	return len(c.conns)
 }
 
-func (c *connMgrImp) getIDs() []string {
+func (c *connManagerImp) getIDs() []string {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -70,7 +70,7 @@ func (c *connMgrImp) getIDs() []string {
 	return result
 }
 
-func (c *connMgrImp) isExist(peerID string) bool {
+func (c *connManagerImp) isExist(peerID string) bool {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -78,7 +78,7 @@ func (c *connMgrImp) isExist(peerID string) bool {
 	return ok
 }
 
-func (c *connMgrImp) send(p Protocol, dp *PeerData) error {
+func (c *connManagerImp) send(p Protocol, dp *PeerData) error {
 	if c.size() == 0 {
 		return ErrNoPeers
 	}
@@ -105,7 +105,7 @@ func (c *connMgrImp) send(p Protocol, dp *PeerData) error {
 	return nil
 }
 
-func (c *connMgrImp) add(peer *peer.Peer, conn utils.TCPConn, ec codec, handler recvHandler) error {
+func (c *connManagerImp) add(peer *peer.Peer, conn utils.TCPConn, ec codec, handler recvHandler) error {
 	if c.isExist(peer.ID) {
 		return fmt.Errorf("already exist a connection with %s", peer.ID)
 	}
@@ -125,7 +125,7 @@ func (c *connMgrImp) add(peer *peer.Peer, conn utils.TCPConn, ec codec, handler 
 	return nil
 }
 
-func (c *connMgrImp) String() string {
+func (c *connManagerImp) String() string {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -136,7 +136,7 @@ func (c *connMgrImp) String() string {
 	return result
 }
 
-func (c *connMgrImp) loop() {
+func (c *connManagerImp) loop() {
 	c.lm.Add()
 	defer c.lm.Done()
 
@@ -152,6 +152,6 @@ func (c *connMgrImp) loop() {
 	}
 }
 
-func (c *connMgrImp) removeConn(peerID string) {
+func (c *connManagerImp) removeConn(peerID string) {
 	c.removing <- peerID
 }

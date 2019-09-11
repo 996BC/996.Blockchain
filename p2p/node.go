@@ -47,7 +47,7 @@ func NewNode(c *Config) Node {
 		protocols:    make(map[uint8]*protocolRunner),
 		ngBlackList:  make(map[string]time.Time),
 		connectTask:  make(chan *peer.Peer, c.MaxPeerNum),
-		connMgr:      newConnMgr(c.MaxPeerNum),
+		connMgr:      newConnManager(c.MaxPeerNum),
 		lm:           utils.NewLoop(1),
 	}
 	n.ng = newNegotiator(n.privKey, n.chainID, n.nodeType)
@@ -78,7 +78,7 @@ type node struct {
 	ngBlackList map[string]time.Time
 
 	connectTask chan *peer.Peer
-	connMgr     connMgr
+	connMgr     connManager
 
 	lm *utils.LoopMode
 }
