@@ -23,17 +23,19 @@ type connManager interface {
 
 func newConnManager(maxPeerNum int) connManager {
 	return &connManagerImp{
-		conns:    make(map[string]*conn),
-		removing: make(chan string, maxPeerNum),
-		lm:       utils.NewLoop(1),
+		conns:      make(map[string]*conn),
+		maxPeerNum: maxPeerNum,
+		removing:   make(chan string, maxPeerNum),
+		lm:         utils.NewLoop(1),
 	}
 }
 
 type connManagerImp struct {
-	mutex    sync.Mutex
-	conns    map[string]*conn //<peer ID, conn>
-	removing chan string
-	lm       *utils.LoopMode
+	mutex      sync.Mutex
+	conns      map[string]*conn //<peer ID, conn>
+	maxPeerNum int
+	removing   chan string
+	lm         *utils.LoopMode
 }
 
 func (c *connManagerImp) start() {
@@ -106,12 +108,16 @@ func (c *connManagerImp) send(p Protocol, dp *PeerData) error {
 }
 
 func (c *connManagerImp) add(peer *peer.Peer, conn utils.TCPConn, ec codec, handler recvHandler) error {
-	if c.isExist(peer.ID) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if _, ok := c.conns[peer.ID]; ok {
 		return fmt.Errorf("already exist a connection with %s", peer.ID)
 	}
 
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	if len(c.conns) >= c.maxPeerNum {
+		return fmt.Errorf("over max peer(%d) limits", len(c.conns))
+	}
 
 	connection := newConn(peer, conn, ec, handler)
 	c.conns[peer.ID] = connection

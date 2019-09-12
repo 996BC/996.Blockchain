@@ -156,7 +156,7 @@ func (n *node) loop() {
 
 func (n *node) getPeersToConnect() {
 	peersNum := n.connMgr.size()
-	if peersNum > n.maxPeersNum {
+	if peersNum >= n.maxPeersNum {
 		return
 	}
 
