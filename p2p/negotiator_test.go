@@ -5,11 +5,11 @@ import (
 	"net"
 	"testing"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/996BC/996.Blockchain/p2p/peer"
 	"github.com/996BC/996.Blockchain/params"
 	"github.com/996BC/996.Blockchain/serialize/handshake"
 	"github.com/996BC/996.Blockchain/utils"
+	"github.com/btcsuite/btcd/btcec"
 )
 
 var negotiatorTestVar = &struct {
@@ -234,16 +234,18 @@ func TestReceiverCoderVersionMismatch(t *testing.T) {
 	}
 }
 
-func newSender(nodeType params.NodeType) *negotiator {
+func newSender(nodeType params.NodeType) *negotiatorImp {
 	tv := negotiatorTestVar
-	result := newNegotiator(tv.sendPrivKey, tv.chainID, nodeType)
+	ng := newNegotiator(tv.sendPrivKey, tv.chainID, nodeType)
+	result := ng.(*negotiatorImp)
 	result.genSessionKeyFunc = senderGenSessionKeyFunc
 	return result
 }
 
-func newReceiver(nodeType params.NodeType) *negotiator {
+func newReceiver(nodeType params.NodeType) *negotiatorImp {
 	tv := negotiatorTestVar
-	result := newNegotiator(tv.recvPrivKey, tv.chainID, nodeType)
+	ng := newNegotiator(tv.recvPrivKey, tv.chainID, nodeType)
+	result := ng.(*negotiatorImp)
 	result.genSessionKeyFunc = receiverGenSessionKeyFunc
 	return result
 }

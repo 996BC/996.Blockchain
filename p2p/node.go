@@ -39,16 +39,17 @@ func NewNode(c *Config) Node {
 		logger.Fatal("invalid node type %d\n", c.Type)
 	}
 	n := &node{
-		privKey:      c.PrivKey,
-		chainID:      c.ChainID,
-		nodeType:     c.Type,
-		maxPeersNum:  c.MaxPeerNum,
-		peerProvider: c.Provider,
-		protocols:    make(map[uint8]*protocolRunner),
-		ngBlackList:  make(map[string]time.Time),
-		connectTask:  make(chan *peer.Peer, c.MaxPeerNum),
-		connMgr:      newConnManager(c.MaxPeerNum),
-		lm:           utils.NewLoop(1),
+		privKey:        c.PrivKey,
+		chainID:        c.ChainID,
+		nodeType:       c.Type,
+		maxPeersNum:    c.MaxPeerNum,
+		peerProvider:   c.Provider,
+		protocols:      make(map[uint8]*protocolRunner),
+		ngBlackList:    make(map[string]time.Time),
+		tcpConnectFunc: utils.TCPConnectTo,
+		connectTask:    make(chan *peer.Peer, c.MaxPeerNum),
+		connMgr:        newConnManager(c.MaxPeerNum),
+		lm:             utils.NewLoop(1),
 	}
 	n.ng = newNegotiator(n.privKey, n.chainID, n.nodeType)
 
@@ -73,12 +74,13 @@ type node struct {
 	protocolsMutex sync.Mutex
 	protocols      map[uint8]*protocolRunner //<Protocol ID, ProtocolRunner>
 
-	ng          *negotiator
+	ng          negotiator
 	ngMutex     sync.Mutex
 	ngBlackList map[string]time.Time
 
-	connectTask chan *peer.Peer
-	connMgr     connManager
+	tcpConnectFunc func(ip net.IP, port int) (utils.TCPConn, error) // easily mock in test
+	connectTask    chan *peer.Peer
+	connMgr        connManager
 
 	lm *utils.LoopMode
 }
@@ -147,7 +149,7 @@ func (n *node) loop() {
 			go func() {
 				n.lm.Add()
 				newPeerConn.SetSplitFunc(splitTCPStream)
-				n.recvHandshake(newPeerConn)
+				n.recvConn(newPeerConn)
 				n.lm.Done()
 			}()
 		}
@@ -191,13 +193,13 @@ func (n *node) setupConn(newPeer *peer.Peer) {
 		return
 	}
 
-	conn, err := utils.TCPConnectTo(newPeer.IP, newPeer.Port)
+	conn, err := n.tcpConnectFunc(newPeer.IP, newPeer.Port)
 	if err != nil {
 		logger.Warn("setup conection to %v failed:%v", newPeer, err)
 		return
 	}
-
 	conn.SetSplitFunc(splitTCPStream)
+
 	ec, err := n.ng.handshakeTo(conn, newPeer)
 	if err != nil {
 		logger.Warn("handshake to %v failed:%v", newPeer, err)
@@ -209,7 +211,7 @@ func (n *node) setupConn(newPeer *peer.Peer) {
 	n.addConn(newPeer, conn, ec)
 }
 
-func (n *node) recvHandshake(conn utils.TCPConn) {
+func (n *node) recvConn(conn utils.TCPConn) {
 	accept := false
 	if n.connMgr.size() < n.maxPeersNum {
 		accept = true

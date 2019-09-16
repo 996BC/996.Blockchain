@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/996BC/996.Blockchain/p2p/peer"
 	"github.com/996BC/996.Blockchain/params"
 	"github.com/996BC/996.Blockchain/serialize/handshake"
 	"github.com/996BC/996.Blockchain/utils"
+	"github.com/btcsuite/btcd/btcec"
 )
 
 /*
@@ -32,7 +32,12 @@ const (
 	nonceSize           = 12
 )
 
-type negotiator struct {
+type negotiator interface {
+	handshakeTo(conn utils.TCPConn, peer *peer.Peer) (codec, error)
+	recvHandshake(conn utils.TCPConn, accept bool) (*peer.Peer, codec, error)
+}
+
+type negotiatorImp struct {
 	privKey                 *btcec.PrivateKey
 	pubKey                  *btcec.PublicKey
 	chainID                 uint8
@@ -42,8 +47,8 @@ type negotiator struct {
 	genSessionKeyFunc       func() (*btcec.PrivateKey, error) // for test stub
 }
 
-func newNegotiator(privKey *btcec.PrivateKey, chainID uint8, nodeType params.NodeType) *negotiator {
-	result := &negotiator{
+func newNegotiator(privKey *btcec.PrivateKey, chainID uint8, nodeType params.NodeType) negotiator {
+	result := &negotiatorImp{
 		privKey:                 privKey,
 		chainID:                 chainID,
 		nodeType:                nodeType,
@@ -55,7 +60,7 @@ func newNegotiator(privKey *btcec.PrivateKey, chainID uint8, nodeType params.Nod
 	return result
 }
 
-func (n *negotiator) handshakeTo(conn utils.TCPConn, peer *peer.Peer) (codec, error) {
+func (n *negotiatorImp) handshakeTo(conn utils.TCPConn, peer *peer.Peer) (codec, error) {
 	// session temporary key, temporary nonce
 	sessionPrivKey, err := n.genSessionKeyFunc()
 	if err != nil {
@@ -84,7 +89,7 @@ func (n *negotiator) handshakeTo(conn utils.TCPConn, peer *peer.Peer) (codec, er
 	return newAESGCMCodec(peerSessionKey, sessionPrivKey)
 }
 
-func (n *negotiator) recvHandshake(conn utils.TCPConn, accept bool) (*peer.Peer, codec, error) {
+func (n *negotiatorImp) recvHandshake(conn utils.TCPConn, accept bool) (*peer.Peer, codec, error) {
 	request, err := n.waitRequest(conn)
 	if err != nil {
 		return nil, nil, err
@@ -135,7 +140,7 @@ func (n *negotiator) recvHandshake(conn utils.TCPConn, accept bool) (*peer.Peer,
 	return peer, ec, nil
 }
 
-func (n *negotiator) waitResponse(conn utils.TCPConn, sessionPrivKey *btcec.PrivateKey) (*handshake.Response, error) {
+func (n *negotiatorImp) waitResponse(conn utils.TCPConn, sessionPrivKey *btcec.PrivateKey) (*handshake.Response, error) {
 	plainText, err := n.readPacket(conn)
 	if err != nil {
 		return nil, err
@@ -150,7 +155,7 @@ func (n *negotiator) waitResponse(conn utils.TCPConn, sessionPrivKey *btcec.Priv
 	return resp, nil
 }
 
-func (n *negotiator) waitRequest(conn utils.TCPConn) (*handshake.Request, error) {
+func (n *negotiatorImp) waitRequest(conn utils.TCPConn) (*handshake.Request, error) {
 	plainText, err := n.readPacket(conn)
 	if err != nil {
 		return nil, err
@@ -166,7 +171,7 @@ func (n *negotiator) waitRequest(conn utils.TCPConn) (*handshake.Request, error)
 	return request, nil
 }
 
-func (n *negotiator) genRequest(sessionPrivKey *btcec.PrivateKey,
+func (n *negotiatorImp) genRequest(sessionPrivKey *btcec.PrivateKey,
 	peerKey *btcec.PublicKey) []byte {
 
 	sessionPubKey := sessionPrivKey.PubKey()
@@ -179,14 +184,14 @@ func (n *negotiator) genRequest(sessionPrivKey *btcec.PrivateKey,
 	return buildTCPPacket(req.Marshal(), handshakeProtocolID)
 }
 
-func (n *negotiator) genRejectResponse() []byte {
+func (n *negotiatorImp) genRejectResponse() []byte {
 	resp := handshake.NewRejectResponseV1()
 	resp.Sign(n.privKey)
 
 	return buildTCPPacket(resp.Marshal(), handshakeProtocolID)
 }
 
-func (n *negotiator) genAcceptResponse(sessionPrivKey *btcec.PrivateKey) []byte {
+func (n *negotiatorImp) genAcceptResponse(sessionPrivKey *btcec.PrivateKey) []byte {
 	resp := handshake.NewAcceptResponseV1(n.codeVersion, n.nodeType,
 		sessionPrivKey.PubKey().SerializeCompressed())
 	resp.Sign(n.privKey)
@@ -194,7 +199,7 @@ func (n *negotiator) genAcceptResponse(sessionPrivKey *btcec.PrivateKey) []byte 
 	return buildTCPPacket(resp.Marshal(), handshakeProtocolID)
 }
 
-func (n *negotiator) readPacket(conn utils.TCPConn) ([]byte, error) {
+func (n *negotiatorImp) readPacket(conn utils.TCPConn) ([]byte, error) {
 	timeoutTicker := time.NewTicker(5 * time.Second)
 	recvC := conn.GetRecvChannel()
 	var payload []byte
@@ -221,7 +226,7 @@ func (n *negotiator) readPacket(conn utils.TCPConn) ([]byte, error) {
 	return payload, nil
 }
 
-func (n *negotiator) whetherRejectReq(request *handshake.Request) error {
+func (n *negotiatorImp) whetherRejectReq(request *handshake.Request) error {
 	if request.ChainID != n.chainID {
 		return NegotiateChainIDMismatch{}
 	}
@@ -237,7 +242,7 @@ func (n *negotiator) whetherRejectReq(request *handshake.Request) error {
 	return nil
 }
 
-func (n *negotiator) whetherRejectResp(response *handshake.Response, remotePubKey *btcec.PublicKey) error {
+func (n *negotiatorImp) whetherRejectResp(response *handshake.Response, remotePubKey *btcec.PublicKey) error {
 	if !response.Verify(remotePubKey) {
 		return NegotiateVerifySigFailed{}
 	}
@@ -257,7 +262,7 @@ func (n *negotiator) whetherRejectResp(response *handshake.Response, remotePubKe
 	return nil
 }
 
-func (n *negotiator) getPeerFromRequest(conn utils.TCPConn, request *handshake.Request) (*peer.Peer, error) {
+func (n *negotiatorImp) getPeerFromRequest(conn utils.TCPConn, request *handshake.Request) (*peer.Peer, error) {
 	peerPubKey, err := btcec.ParsePubKey(request.PubKey, btcec.S256())
 	if err != nil {
 		return nil, NegotiateBrokenData{
