@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	coreProtocolID = 100
-	coreProtocol   = "CoreProtocol"
-
-	maxBlocksNumInResponse = 16
+	coreProtocolID           = 100
+	coreProtocol             = "CoreProtocol"
+	maxBlocksNumInResponse   = 16
+	initializingSyncInterval = 1 * time.Second
+	syncInterval             = 5 * time.Second
 )
 
-type expectBlocksResponse struct {
+type waitingBlocks struct {
 	peerID           string
 	lastResponseTime time.Time
 	remainNums       uint32
@@ -40,8 +41,10 @@ type net struct {
 	chain     *blockchain.Chain
 	pool      *evidencePool
 
-	syncHashResp        map[string]*cp.SyncResponse // peerID as key
-	expectingBlocksResp []*expectBlocksResponse
+	syncTicker    *time.Ticker
+	syncHashResp  map[string]*cp.SyncResponse // peerID as key
+	watingHash    bool
+	waitingBlocks []*waitingBlocks
 
 	evdsToBroadcast chan []*cp.Evidence
 	broadcastFilter map[string]time.Time
@@ -56,7 +59,9 @@ func newNet(node p2p.Node, chain *blockchain.Chain, pool *evidencePool, nodeType
 		sendQ:           make(chan *p2p.PeerData, 512),
 		chain:           chain,
 		pool:            pool,
+		syncTicker:      time.NewTicker(initializingSyncInterval),
 		syncHashResp:    make(map[string]*cp.SyncResponse),
+		watingHash:      false,
 		evdsToBroadcast: make(chan []*cp.Evidence, evdsCacheSize),
 		broadcastFilter: make(map[string]time.Time),
 		lm:              utils.NewLoop(2),
@@ -88,7 +93,6 @@ func (n *net) loop() {
 	n.lm.Add()
 	defer n.lm.Done()
 
-	syncTicker := time.NewTicker(10 * time.Second)
 	cleanupTicker := time.NewTicker(30 * time.Second)
 	recvPktChan := n.pr.GetRecvChan()
 
@@ -99,7 +103,7 @@ func (n *net) loop() {
 			return
 		case pkt := <-recvPktChan:
 			n.handleRecvPacket(pkt)
-		case <-syncTicker.C:
+		case <-n.syncTicker.C:
 			n.sync()
 		case evds := <-n.evdsToBroadcast:
 			n.broadcastEvidence(evds)
@@ -226,18 +230,24 @@ func (n *net) handleRecvPacket(pd *p2p.PeerData) {
 	}
 }
 
+// sync asks the neighbours to sync blocks in 2 steps:
+// step 1. sync the hash of blocks
+// step 2. sync the blocks
+// so it will take 2 * syncInterval time to finish
 func (n *net) sync() {
-	if len(n.expectingBlocksResp) == 0 {
+	// if it is not waiting for blocks， do the sync request
+	if len(n.waitingBlocks) == 0 {
 		n.syncRequest()
 		return
 	}
 
+	// otherwise clean up the timeout wating
 	now := time.Now()
-	var reservedExpecting []*expectBlocksResponse
-	for _, exp := range n.expectingBlocksResp {
-		// expect transfer one block data per 5 seconds
+	var waiting []*waitingBlocks
+	for _, exp := range n.waitingBlocks {
+		// expect transfering a block per 5 seconds
 		if now.Sub(exp.lastResponseTime) <= time.Duration(5*maxBlocksNumInResponse)*time.Second {
-			reservedExpecting = append(reservedExpecting, exp)
+			waiting = append(waiting, exp)
 			continue
 		}
 
@@ -246,21 +256,22 @@ func (n *net) sync() {
 			utils.TimeToString(exp.lastResponseTime), exp.remainNums)
 
 	}
-	n.expectingBlocksResp = reservedExpecting
+	n.waitingBlocks = waiting
 }
 
 func (n *net) syncRequest() {
-	// sync blocks' hash
+	// if the sync hash response is empty, send sync request for hash
 	if len(n.syncHashResp) == 0 {
 		latestHash := n.chain.GetSyncBlockHash()
 		for _, h := range latestHash {
 			request := cp.NewSyncRequest(h).Marshal()
 			n.broadcast(request)
 		}
+		n.watingHash = true
 		return
 	}
 
-	// sync blocks
+	// otherwise send sync request for blocks
 	queryFilter := make(map[string]bool)
 	alreadyUptodate := true
 	for peerID, resp := range n.syncHashResp {
@@ -269,35 +280,38 @@ func (n *net) syncRequest() {
 		}
 		alreadyUptodate = false
 
+		// filters the same response
 		queryFlag := fmt.Sprintf("%X-%d", resp.End, resp.HeightDiff)
 		if _, find := queryFilter[queryFlag]; find {
 			continue
 		}
+		queryFilter[queryFlag] = true
 
-		// send request
 		request := cp.NewBlockRequest(resp.Base, resp.End, n.lightNode).Marshal()
 		n.send(request, peerID)
 
-		// add to expectingBlocksResp
-		exp := &expectBlocksResponse{
+		// add to waiting list
+		exp := &waitingBlocks{
 			peerID:           peerID,
 			lastResponseTime: time.Now(),
 			remainNums:       resp.HeightDiff,
 		}
+		n.waitingBlocks = append(n.waitingBlocks, exp)
 		logger.Debug("add block response expection, peer:%s remainNums:%d, from %X to %X\n",
 			exp.peerID, exp.remainNums, resp.Base, resp.End)
-		n.expectingBlocksResp = append(n.expectingBlocksResp, exp)
-
-		queryFilter[queryFlag] = true
 	}
 
-	// clean up
+	// cleanup
 	n.syncHashResp = make(map[string]*cp.SyncResponse)
+	n.watingHash = false
 
-	// finish init
+	// finish initializing
 	if !n.inited && alreadyUptodate {
 		n.InitFinishC <- true
 		n.inited = true
+		// reduce the sync request frequency
+		n.syncTicker.Stop()
+		n.syncTicker = time.NewTicker(syncInterval)
 		logger.Debug("network for CoreProtocol init finished")
 	}
 }
@@ -339,6 +353,10 @@ func (n *net) handleSyncRequest(r *cp.SyncRequest, peerID string) {
 }
 
 func (n *net) handleSyncResponse(r *cp.SyncResponse, peerID string) {
+	if !n.watingHash {
+		return
+	}
+
 	logger.Debug("receive SyncResponse from %s, %v\n", peerID, r)
 	n.syncHashResp[peerID] = r
 }
@@ -371,7 +389,7 @@ func (n *net) handleBlocksRequest(r *cp.BlockRequest, peerID string) {
 
 func (n *net) handleBlocksResponse(r *cp.BlockResponse, peerID string) {
 	logger.Debug("receive BlockResponse from %s, %d blocks\n", peerID, len(r.Blocks))
-	for i, exp := range n.expectingBlocksResp {
+	for i, exp := range n.waitingBlocks {
 		if exp.peerID == peerID {
 			exp.lastResponseTime = time.Now()
 			exp.remainNums -= uint32(len(r.Blocks))
@@ -394,7 +412,7 @@ func (n *net) handleBlocksResponse(r *cp.BlockResponse, peerID string) {
 			}
 
 			if remove {
-				n.expectingBlocksResp = append(n.expectingBlocksResp[:i], n.expectingBlocksResp[i+1:]...)
+				n.waitingBlocks = append(n.waitingBlocks[:i], n.waitingBlocks[i+1:]...)
 			}
 
 			return
