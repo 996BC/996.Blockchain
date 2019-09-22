@@ -132,7 +132,7 @@ func uploadEvds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := globalSvr.c.UploadEvidence(evds); err != nil {
-		if existErr, ok := err.(blockchain.EvidenceAlreadyExist); ok {
+		if existErr, ok := err.(blockchain.ErrEvidenceAlreadyExist); ok {
 			failedResponse(existErr.Error(), w)
 			return
 		}

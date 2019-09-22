@@ -96,12 +96,12 @@ func (n *negotiatorImp) recvHandshake(conn utils.TCPConn, accept bool) (*peer.Pe
 	}
 
 	if !request.Verify() {
-		return nil, nil, NegotiateVerifySigFailed{}
+		return nil, nil, ErrNegotiateInvalidSig
 	}
 
 	peerSessionKey, err := btcec.ParsePubKey(request.SessionKey, btcec.S256())
 	if err != nil {
-		return nil, nil, NegotiateBrokenData{
+		return nil, nil, ErrNegotiateBrokenData{
 			info: fmt.Sprintf("parse handshake session public key failed:%v", err),
 		}
 	}
@@ -148,7 +148,7 @@ func (n *negotiatorImp) waitResponse(conn utils.TCPConn, sessionPrivKey *btcec.P
 
 	resp, err := handshake.UnmarshalResponse(bytes.NewReader(plainText))
 	if err != nil {
-		return nil, NegotiateBrokenData{
+		return nil, ErrNegotiateBrokenData{
 			info: fmt.Sprintf("unmarshal handshake response failed:%v", err),
 		}
 	}
@@ -163,7 +163,7 @@ func (n *negotiatorImp) waitRequest(conn utils.TCPConn) (*handshake.Request, err
 
 	request, err := handshake.UnmarshalRequest(bytes.NewReader(plainText))
 	if err != nil {
-		return nil, NegotiateBrokenData{
+		return nil, ErrNegotiateBrokenData{
 			info: fmt.Sprintf("unmarshal handshake request failed:%v", err),
 		}
 	}
@@ -208,17 +208,17 @@ func (n *negotiatorImp) readPacket(conn utils.TCPConn) ([]byte, error) {
 
 	select {
 	case <-timeoutTicker.C:
-		return nil, NegotiateTimeout{}
+		return nil, ErrNegotiateTimeout
 	case packet := <-recvC:
 		if ok, payload, protocolID = verifyTCPPacket(packet); !ok {
-			return nil, NegotiateBrokenData{
+			return nil, ErrNegotiateBrokenData{
 				info: fmt.Sprintf("veirfy handshake packet checksum failed"),
 			}
 		}
 	}
 
 	if protocolID != handshakeProtocolID {
-		return nil, NegotiateBrokenData{
+		return nil, ErrNegotiateBrokenData{
 			info: fmt.Sprintf("invalid protocol ID for handshake %d", protocolID),
 		}
 	}
@@ -228,15 +228,15 @@ func (n *negotiatorImp) readPacket(conn utils.TCPConn) ([]byte, error) {
 
 func (n *negotiatorImp) whetherRejectReq(request *handshake.Request) error {
 	if request.ChainID != n.chainID {
-		return NegotiateChainIDMismatch{}
+		return ErrNegotiateChainIDMismatch
 	}
 
 	if request.CodeVersion < n.minimizeVersionRequired {
-		return NegotiateCodeVersionMismatch{n.minimizeVersionRequired, request.CodeVersion}
+		return ErrNegotiateCodeVersionMismatch{n.minimizeVersionRequired, request.CodeVersion}
 	}
 
 	if n.nodeType == params.LightNode && request.NodeType == params.LightNode {
-		return NegotiateNodeTypeMismatch{}
+		return ErrNegotiateNodeTypeMismatch
 	}
 
 	return nil
@@ -244,19 +244,19 @@ func (n *negotiatorImp) whetherRejectReq(request *handshake.Request) error {
 
 func (n *negotiatorImp) whetherRejectResp(response *handshake.Response, remotePubKey *btcec.PublicKey) error {
 	if !response.Verify(remotePubKey) {
-		return NegotiateVerifySigFailed{}
+		return ErrNegotiateInvalidSig
 	}
 
 	if !response.IsAccept() {
-		return NegotiateGotRejection{}
+		return ErrNegotiateConnectionRefused
 	}
 
 	if response.CodeVersion < n.minimizeVersionRequired {
-		return NegotiateCodeVersionMismatch{n.minimizeVersionRequired, response.CodeVersion}
+		return ErrNegotiateCodeVersionMismatch{n.minimizeVersionRequired, response.CodeVersion}
 	}
 
 	if response.NodeType == params.LightNode {
-		return NegotiateNodeTypeMismatch{}
+		return ErrNegotiateNodeTypeMismatch
 	}
 
 	return nil
@@ -265,7 +265,7 @@ func (n *negotiatorImp) whetherRejectResp(response *handshake.Response, remotePu
 func (n *negotiatorImp) getPeerFromRequest(conn utils.TCPConn, request *handshake.Request) (*peer.Peer, error) {
 	peerPubKey, err := btcec.ParsePubKey(request.PubKey, btcec.S256())
 	if err != nil {
-		return nil, NegotiateBrokenData{
+		return nil, ErrNegotiateBrokenData{
 			info: fmt.Sprintf("parse handhshake peer public key failed:%v", err),
 		}
 	}

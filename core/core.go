@@ -99,7 +99,7 @@ func (c *Core) UploadEvidenceRaw(evds []*RawEvidence) error {
 func (c *Core) UploadEvidence(evds []*cp.Evidence) error {
 	for _, evd := range evds {
 		if err := c.chain.VerifyEvidence(evd); err != nil {
-			if _, ok := err.(blockchain.EvidenceAlreadyExist); ok {
+			if _, ok := err.(blockchain.ErrEvidenceAlreadyExist); ok {
 				return err
 			}
 			return fmt.Errorf("verify evidence failed[%v]", evd)

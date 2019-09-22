@@ -1,58 +1,36 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/996BC/996.Blockchain/params"
 )
 
-type NegotiateVerifySigFailed struct {
-}
+var ErrNegotiateInvalidSig = errors.New("invalid signature")
 
-func (n NegotiateVerifySigFailed) Error() string {
-	return "verify negotiate response signature failed"
-}
+var ErrNegotiateConnectionRefused = errors.New("connection refused")
 
-type NegotiateGotRejection struct{}
+var ErrNegotiateChainIDMismatch = errors.New("chain id mismatch")
 
-func (n NegotiateGotRejection) Error() string {
-	return "remote reject connection"
-}
+var ErrNegotiateNodeTypeMismatch = errors.New("node type mismatch: 1. the light nodes would not connect with each other; 2. the full nodes would not connect to the light nodes")
 
-type NegotiateChainIDMismatch struct{}
+var ErrNegotiateTimeout = errors.New("timeout")
 
-func (n NegotiateChainIDMismatch) Error() string {
-	return "chain id mismatch"
-}
-
-type NegotiateCodeVersionMismatch struct {
+type ErrNegotiateCodeVersionMismatch struct {
 	minimizeVersionRequired params.CodeVersion
 	remoteVersion           params.CodeVersion
 }
 
-func (n NegotiateCodeVersionMismatch) Error() string {
-	return fmt.Sprintf("code version mismatch, minimize required %d, remote is %d",
+func (n ErrNegotiateCodeVersionMismatch) Error() string {
+	return fmt.Sprintf("code version mismatch, minimize required %d, got %d",
 		n.minimizeVersionRequired, n.remoteVersion)
 }
 
-type NegotiateNodeTypeMismatch struct {
-}
-
-func (n NegotiateNodeTypeMismatch) Error() string {
-	return "light nodes would not connect with each other; full node would not connect to light node"
-}
-
-type NegotiateBrokenData struct {
+type ErrNegotiateBrokenData struct {
 	info string
 }
 
-func (n NegotiateBrokenData) Error() string {
+func (n ErrNegotiateBrokenData) Error() string {
 	return n.info
-}
-
-type NegotiateTimeout struct {
-}
-
-func (n NegotiateTimeout) Error() string {
-	return "negotiate timeout"
 }

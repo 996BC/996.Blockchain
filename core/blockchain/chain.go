@@ -112,14 +112,14 @@ func (c *Chain) GetSyncHash(base []byte) (end []byte, heightDiff uint32, err err
 	if baseBlock := c.longestBranch.getBlock(base); baseBlock != nil {
 		b := c.longestBranch.head
 		if bytes.Equal(b.hash, base) {
-			return nil, 0, AlreadyUpToDate{base}
+			return nil, 0, ErrAlreadyUpToDate{base}
 		}
 
 		endHash := b.hash
 		for {
 			if b == nil {
 				// flushing cache to db happens during this time
-				return nil, 0, FlushCacheHappen{base}
+				return nil, 0, ErrFlushingCache{base}
 			}
 			if bytes.Equal(b.hash, base) {
 				break
@@ -134,7 +134,7 @@ func (c *Chain) GetSyncHash(base []byte) (end []byte, heightDiff uint32, err err
 	// search in the db
 	_, baseHeight, err := db.GetHeaderViaHash(base)
 	if err != nil {
-		return nil, 0, SyncHashNotFound{base}
+		return nil, 0, ErrHashNotFound{base}
 	}
 
 	_, dbLatestHeight, dbLatestHash, err := db.GetLatestHeader()
@@ -171,7 +171,7 @@ func (c *Chain) GetSyncBlocks(base []byte, end []byte, onlyHeader bool) ([]*cp.B
 
 			if iter == nil {
 				// flushing cache to db happens during this time
-				return nil, FlushCacheHappen{base}
+				return nil, ErrFlushingCache{base}
 			}
 
 			result = append([]*cp.Block{iter.Block.ShallowCopy(onlyHeader)}, result...)
@@ -185,7 +185,7 @@ func (c *Chain) GetSyncBlocks(base []byte, end []byte, onlyHeader bool) ([]*cp.B
 	} else if endBlock == nil {
 		logger.Debug("cache not found end, search in db\n")
 	} else {
-		return nil, SyncInvalidRequest{fmt.Sprintf("block heigh error, base %d, end %d\n",
+		return nil, ErrInvalidBlockRange{fmt.Sprintf("block heigh error, base %d, end %d\n",
 			baseBlock.height, endBlock.height)}
 	}
 
@@ -201,10 +201,10 @@ func (c *Chain) GetSyncBlocks(base []byte, end []byte, onlyHeader bool) ([]*cp.B
 	}
 
 	if sBaseBlock != nil && endBlock != nil {
-		return result, FlushCacheHappen{base}
+		return result, ErrFlushingCache{base}
 	}
 
-	return nil, SyncHashNotFound{base}
+	return nil, ErrHashNotFound{base}
 }
 
 // GetSyncBlockHash returns the latest block hash of each branches

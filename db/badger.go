@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/dgraph-io/badger"
 	"github.com/996BC/996.Blockchain/serialize/cp"
 	"github.com/996BC/996.Blockchain/serialize/storage"
 	"github.com/996BC/996.Blockchain/utils"
+	"github.com/dgraph-io/badger"
 )
 
 var placeHolder = []byte("0")
@@ -101,7 +101,7 @@ func (b *badgerDB) PutBlock(block *cp.Block, height uint64) error {
 	}
 	expectHeight := latestHeight + 1
 	if height != expectHeight {
-		return InvalidHeight{height, expectHeight}
+		return ErrInvalidHeight{height, expectHeight}
 	}
 
 	wf := func(tx *badger.Txn) error {
@@ -554,11 +554,11 @@ func (b *badgerDB) wrapError(err error) error {
 	}
 
 	if err == badger.ErrKeyNotFound {
-		return &NotFound{}
+		return ErrNotFound
 	}
 
 	logger.Warn("badger got unexpect err:%v\n", err)
-	return &InternalError{}
+	return ErrInternal
 }
 
 func (b *badgerDB) start() {

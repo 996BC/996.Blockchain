@@ -4,42 +4,42 @@ import (
 	"fmt"
 )
 
-type AlreadyUpToDate struct {
+type ErrAlreadyUpToDate struct {
 	reqHash []byte
 }
 
-func (a AlreadyUpToDate) Error() string {
+func (a ErrAlreadyUpToDate) Error() string {
 	return fmt.Sprintf("%X is already up to date", a.reqHash)
 }
 
-type FlushCacheHappen struct {
+type ErrFlushingCache struct {
 	reqHash []byte
 }
 
-func (f FlushCacheHappen) Error() string {
+func (f ErrFlushingCache) Error() string {
 	return fmt.Sprintf("flushing happens while handling %X, give up", f.reqHash)
 }
 
-type SyncHashNotFound struct {
+type ErrHashNotFound struct {
 	reqHash []byte
 }
 
-func (s SyncHashNotFound) Error() string {
+func (s ErrHashNotFound) Error() string {
 	return fmt.Sprintf("sync %X not found", s.reqHash)
 }
 
-type SyncInvalidRequest struct {
+type ErrInvalidBlockRange struct {
 	info string
 }
 
-func (s SyncInvalidRequest) Error() string {
+func (s ErrInvalidBlockRange) Error() string {
 	return s.info
 }
 
-type EvidenceAlreadyExist struct {
+type ErrEvidenceAlreadyExist struct {
 	evd []byte
 }
 
-func (e EvidenceAlreadyExist) Error() string {
+func (e ErrEvidenceAlreadyExist) Error() string {
 	return fmt.Sprintf("evidence %X exists", e.evd)
 }

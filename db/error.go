@@ -1,28 +1,20 @@
 package db
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
-type InvalidHeight struct {
+type ErrInvalidHeight struct {
 	put    uint64
 	expect uint64
 }
 
-func (i InvalidHeight) Error() string {
-	return fmt.Sprintf("invalid height detect while putting blocks to db %d, expect %d",
+func (i ErrInvalidHeight) Error() string {
+	return fmt.Sprintf("an invalid height detected while putting blocks to db %d, expect %d",
 		i.put, i.expect)
 }
 
-type InternalError struct {
-	error
-}
+var ErrInternal = errors.New("internal error")
 
-func (i InternalError) Error() string {
-	return "db internal error"
-}
-
-type NotFound struct {
-}
-
-func (n NotFound) Error() string {
-	return "db not found"
-}
+var ErrNotFound = errors.New("not found")

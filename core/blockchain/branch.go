@@ -212,12 +212,12 @@ func (b *branch) verifyEvidence(e *cp.Evidence) error {
 
 	// cache checking
 	if v := b.getEvidence(e.Hash); v != nil {
-		return EvidenceAlreadyExist{e.Hash}
+		return ErrEvidenceAlreadyExist{e.Hash}
 	}
 
 	// db checking
 	if db.HasEvidence(e.Hash) {
-		return EvidenceAlreadyExist{e.Hash}
+		return ErrEvidenceAlreadyExist{e.Hash}
 	}
 
 	return nil

@@ -332,7 +332,7 @@ func (n *net) handleSyncRequest(r *cp.SyncRequest, peerID string) {
 	var response []byte
 
 	if err != nil {
-		if _, ok := err.(blockchain.AlreadyUpToDate); ok {
+		if _, ok := err.(blockchain.ErrAlreadyUpToDate); ok {
 			response = cp.NewSyncResponse(nil, nil, 0, true).Marshal()
 			logger.Debug("reply sync request already uptodate\n")
 		} else {

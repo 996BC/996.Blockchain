@@ -144,8 +144,8 @@ func TestReject(t *testing.T) {
 	}
 
 	err = sender.whetherRejectResp(resp, tv.recvPubKey)
-	if _, ok := err.(NegotiateGotRejection); !ok {
-		t.Fatal("expect get rejection")
+	if err != ErrNegotiateConnectionRefused {
+		t.Fatal("expect connection refused error")
 	}
 }
 
@@ -161,7 +161,7 @@ func TestChainIDMismatch(t *testing.T) {
 	conn.setRecvPkt(req)
 
 	_, _, err := receiver.recvHandshake(conn, true)
-	if _, ok := err.(NegotiateChainIDMismatch); !ok {
+	if err != ErrNegotiateChainIDMismatch {
 		t.Fatalf("expect chain ID mismatch error, %v\n", err)
 	}
 }
@@ -177,7 +177,7 @@ func TestSenderNodeTypeMismatch(t *testing.T) {
 	conn.setRecvPkt(req)
 
 	_, _, err := receiver.recvHandshake(conn, true)
-	if _, ok := err.(NegotiateNodeTypeMismatch); !ok {
+	if err != ErrNegotiateNodeTypeMismatch {
 		t.Fatalf("expect node type mismatch error, %v\n", err)
 	}
 }
@@ -194,7 +194,7 @@ func TestReceiverNodeTypeMismatch(t *testing.T) {
 
 	peer := peer.NewPeer(tv.remoteIP, tv.remotePort, tv.recvPubKey)
 	_, err := sender.handshakeTo(conn, peer)
-	if _, ok := err.(NegotiateNodeTypeMismatch); !ok {
+	if err != ErrNegotiateNodeTypeMismatch {
 		t.Fatalf("expect node type mismatch error, %v\n", err)
 	}
 }
@@ -211,7 +211,7 @@ func TestSenderCodeVersionMismatch(t *testing.T) {
 	conn.setRecvPkt(req)
 
 	_, _, err := receiver.recvHandshake(conn, true)
-	if _, ok := err.(NegotiateCodeVersionMismatch); !ok {
+	if _, ok := err.(ErrNegotiateCodeVersionMismatch); !ok {
 		t.Fatalf("expect code version mismatch error, %v\n", err)
 	}
 }
@@ -229,7 +229,7 @@ func TestReceiverCoderVersionMismatch(t *testing.T) {
 
 	peer := peer.NewPeer(tv.remoteIP, tv.remotePort, tv.recvPubKey)
 	_, err := sender.handshakeTo(conn, peer)
-	if _, ok := err.(NegotiateCodeVersionMismatch); !ok {
+	if _, ok := err.(ErrNegotiateCodeVersionMismatch); !ok {
 		t.Fatalf("expect code version mismatch error, %v\n", err)
 	}
 }
