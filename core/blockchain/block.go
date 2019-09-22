@@ -10,11 +10,18 @@ import (
 
 type block struct {
 	*cp.Block
+	hash   []byte
+	height uint64
+	stored bool
+
+	// the backward block is the parent of this block, only one
 	backward *block
-	fordward sync.Map // <string, *block>, hex(hash) as key
-	hash     []byte
-	height   uint64
-	stored   bool
+
+	// The forward blocks are the children of this block.
+	// If there are more than one child, it means fork is happening.
+	//
+	// <string, *block>, hex(hash) as key
+	fordward sync.Map
 }
 
 func newBlock(b *cp.Block, height uint64, stored bool) *block {
@@ -56,7 +63,7 @@ func (b *block) removeForward(forward *block) {
 	b.fordward.Delete(key)
 }
 
-func (b *block) forwardContain(cb *cp.Block) bool {
+func (b *block) isBackwardOf(cb *cp.Block) bool {
 	key := utils.ToHex(cb.GetSerializedHash())
 	_, ok := b.fordward.Load(key)
 	return ok
@@ -71,6 +78,8 @@ func (b *block) forwardNum() int {
 	return result
 }
 
+// remove the block from its backward block, and returns the backward block;
+// the block should never use after removing
 func (b *block) remove() (*block, error) {
 	if b.forwardNum() != 0 {
 		return nil, fmt.Errorf("fordward reference is not zero, can't be removed")
@@ -78,8 +87,6 @@ func (b *block) remove() (*block, error) {
 
 	backward := b.backward
 	backward.removeForward(b)
-
-	b.Block = nil
 	b.removeBackward()
 	return backward, nil
 }

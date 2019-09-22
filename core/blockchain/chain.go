@@ -451,7 +451,7 @@ func (c *Chain) createBranch(newBlock *cp.Block) (*branch, error) {
 					b.height(), matchBlock.height)
 			}
 
-			if matchBlock.forwardContain(newBlock) {
+			if matchBlock.isBackwardOf(newBlock) {
 				return nil, fmt.Errorf("duplicated new block")
 			}
 

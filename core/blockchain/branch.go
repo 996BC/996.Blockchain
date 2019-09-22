@@ -46,17 +46,14 @@ func newBranch(begin *block) *branch {
 	return result
 }
 
+// remove the blocks that have no forward block in the branch
+// the branch should never use after removing
+// eg.
+// A --> B --> C --> D           (main branch)
+//             | --> E --> F     (fork branch)
+// if the fork branch call remove(), then the C will not point to E, the E will not point to F,
+// but the C still points to D
 func (b *branch) remove() {
-	b.evidenceCache.Range(func(k, v interface{}) bool {
-		b.evidenceCache.Delete(k)
-		return true
-	})
-
-	b.blockCache.Range(func(k, v interface{}) bool {
-		b.blockCache.Delete(k)
-		return true
-	})
-
 	iter := b.head
 	var err error
 	for {
@@ -69,9 +66,6 @@ func (b *branch) remove() {
 			break
 		}
 	}
-
-	b.head = nil
-	b.tail = nil
 }
 
 func (b *branch) add(newBlock *block) error {
