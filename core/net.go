@@ -96,7 +96,6 @@ func (n *net) loop() {
 	cleanupTicker := time.NewTicker(30 * time.Second)
 	recvPktChan := n.pr.GetRecvChan()
 
-	n.sync()
 	for {
 		select {
 		case <-n.lm.D:
